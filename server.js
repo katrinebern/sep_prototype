@@ -18,7 +18,7 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 // Et simpelt test-endpoint så vi kan se om serveren kører.
 app.get("/", function (req, res) {
-  res.send("Backend kører ✔️");
+  res.send("Backend is running.");
 });
 
 // Dette endpoint bruges når vi vil generere en studieplan.
@@ -29,12 +29,13 @@ app.post("/api/chat", function (req, res) {
   // Simpelt tjek for at sikre korrekt dataformat
   if (!Array.isArray(messages)) {
     return res.status(400).json({
-      error: "Body skal indeholde 'messages' som array",
+      error: "Request body must contain 'messages' as an array.",
     });
   }
 
   // Her sender vi en POST-request til Groq API'et med fetch.
   // Vi sender modelnavn, beskeder og API-nøgle i headers.
+  // request --> response.json() --> use data
   fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -53,7 +54,7 @@ app.post("/api/chat", function (req, res) {
     })
     // Her finder vi selve AI teksten i svarstrukturen og sender den retur til frontend
     .then(function (data) {
-      var content = "";
+      let content = "";
 
       if (
         data &&
@@ -68,8 +69,9 @@ app.post("/api/chat", function (req, res) {
       res.json({ content: content });
     })
     // Hvis AI services fejler eller ikke svarer, sender vi en fejl tilbage
-    .catch(function () {
-      res.status(500).json({ error: "Fejl fra Groq API" });
+    .catch(function (err) {
+      console.error("Error calling Groq API:", err);
+      res.status(500).json({ error: "Error from Groq API" });
     });
 });
 

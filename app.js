@@ -3,7 +3,6 @@
 // - Sender det til backend
 // - Viser svaret i brugergrænsefladen
 
-
 const BACKEND_URL = "http://localhost:3000/api/chat";
 
 // Hent elementer
@@ -25,11 +24,25 @@ const prereqEl = document.getElementById("prerequisites");
 const weeklyEl = document.getElementById("weekly-schedule");
 const riskEl = document.getElementById("risk-flags");
 
+// IIFE function - kører instant så snart script er loaded - restore saved plan
+(function restoreSavedPlan() {
+  try {
+    const saved = localStorage.getItem("studyPlan");
+    if (!saved) return;
+
+    const plan = JSON.parse(saved);
+    renderPlan(plan);
+    statusEl.textContent = "Loaded saved study plan.";
+  } catch (err) {
+    console.error("Could not restore saved study plan from localStorage:", err);
+  }
+})();
+
 // byg prompt -> dette sender vi til backend
 function buildPrompt(data) {
   return (
-    "Du skal lave en studieplan og svare KUN med gyldig JSON uden ```.\n" +
-    "Brug præcis denne struktur og feltnavne:\n\n" +
+    "Create a study plan and respond ONLY with valid JSON (no ```).\n" +
+    "Use exactly this structure:\n\n" +
     "{\n" +
     '  "overview": {\n' +
     '    "total_weeks": number,\n' +
@@ -56,44 +69,44 @@ function buildPrompt(data) {
     "  ]\n" +
     "}\n\n" +
     "DATA:\n" +
-    "- Emner: " +
+    "- Topics: " +
     JSON.stringify(data.topics) +
     "\n" +
     "- Deadlines: " +
     JSON.stringify(data.deadlines) +
     "\n" +
-    "- Uger: " +
+    "- Weeks: " +
     data.weeks +
     "\n" +
-    "- Timer pr uge: " +
+    "- Hours per week: " +
     data.hoursPerWeek +
     "\n" +
-    "- Ekstra info: " +
+    "- Extra context: " +
     JSON.stringify(data.context) +
     "\n\n" +
-    "Returnér kun gyldig JSON."
+    "Return only valid JSON."
   );
 }
 
 // Fetch til backend
 function callBackend(prompt) {
   return fetch(BACKEND_URL, {
-    method: "POST", 
+    method: "POST",
     headers: {
-      "Content-Type": "application/json", 
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       messages: [
-        { role: "system", content: "Du laver en studieplan." },
+        { role: "system", content: "You are creating a study plan." },
         { role: "user", content: prompt },
       ],
     }),
   })
     .then(function (response) {
-      return response.json(); 
+      return response.json();
     })
     .then(function (data) {
-      return data.content; 
+      return data.content;
     });
 }
 
@@ -102,23 +115,30 @@ function renderPlan(plan) {
   outputEmpty.classList.add("hidden");
   planOutput.classList.remove("hidden");
 
+  // Save the latest plan in localStorage
+  try {
+    localStorage.setItem("studyPlan", JSON.stringify(plan));
+  } catch (err) {
+    console.error("Could not save study plan to localStorage:", err);
+  }
+
   // oversigt
   overviewEl.innerHTML = "";
 
-  var p1 = document.createElement("p");
-  p1.innerHTML = "<strong>Uger i planen:</strong> " + plan.overview.total_weeks;
+  const p1 = document.createElement("p");
+  p1.innerHTML =
+    "<strong>Weeks in the plan:</strong> " + plan.overview.total_weeks;
   overviewEl.appendChild(p1);
 
-  var p2 = document.createElement("p");
-  p2.innerHTML =
-    "<strong>Samlet antal timer:</strong> " + plan.overview.total_hours;
+  const p2 = document.createElement("p");
+  p2.innerHTML = "<strong>Total hours:</strong> " + plan.overview.total_hours;
   overviewEl.appendChild(p2);
 
-  var p3 = document.createElement("p");
-  p3.innerHTML = "<strong>Antal emner:</strong> " + plan.overview.topic_count;
+  const p3 = document.createElement("p");
+  p3.innerHTML = "<strong>Topics:</strong> " + plan.overview.topic_count;
   overviewEl.appendChild(p3);
 
-  var p4 = document.createElement("p");
+  const p4 = document.createElement("p");
   p4.textContent = plan.overview.summary;
   overviewEl.appendChild(p4);
 
@@ -126,10 +146,10 @@ function renderPlan(plan) {
   prioritiesEl.innerHTML = "";
 
   if (plan.topic_priorities && plan.topic_priorities.length > 0) {
-    var ul = document.createElement("ul");
+    const ul = document.createElement("ul");
 
     plan.topic_priorities.forEach(function (item) {
-      var li = document.createElement("li");
+      const li = document.createElement("li");
 
       li.innerHTML =
         "<strong>" +
@@ -152,10 +172,10 @@ function renderPlan(plan) {
   prereqEl.innerHTML = "";
 
   if (plan.prerequisites && plan.prerequisites.length > 0) {
-    var ul2 = document.createElement("ul");
+    const ul2 = document.createElement("ul");
 
     plan.prerequisites.forEach(function (item) {
-      var li = document.createElement("li");
+      const li = document.createElement("li");
 
       li.innerHTML =
         "<strong>" + item.topic + "</strong> → " + item.depends_on.join(", ");
@@ -170,45 +190,45 @@ function renderPlan(plan) {
   weeklyEl.innerHTML = "";
 
   if (plan.weekly_schedule && plan.weekly_schedule.length > 0) {
-    var table = document.createElement("table");
+    const table = document.createElement("table");
 
     // Tabel header
-    var thead = document.createElement("thead");
+    const thead = document.createElement("thead");
     thead.innerHTML = `
       <tr>
-        <th>Uge</th>
-        <th>Fokus</th>
-        <th>Timer</th>
-        <th>Milepæle</th>
+        <th>Week</th>
+        <th>Focus</th>
+        <th>Hours</th>
+        <th>Milestones</th>
       </tr>
     `;
     table.appendChild(thead);
 
-    var tbody = document.createElement("tbody");
+    const tbody = document.createElement("tbody");
 
     // forEach pr. uge i planen
     plan.weekly_schedule.forEach(function (week) {
-      var tr = document.createElement("tr");
+      const tr = document.createElement("tr");
 
       // en celle pr. information
-      var td1 = document.createElement("td");
+      const td1 = document.createElement("td");
       td1.textContent = week.week;
       tr.appendChild(td1);
 
-      var td2 = document.createElement("td");
+      const td2 = document.createElement("td");
       td2.textContent = week.focus_topics.join(", ");
       tr.appendChild(td2);
 
-      var td3 = document.createElement("td");
+      const td3 = document.createElement("td");
       td3.textContent = week.hours_planned;
       tr.appendChild(td3);
 
-      var td4 = document.createElement("td");
-      var ulMiles = document.createElement("ul");
+      const td4 = document.createElement("td");
+      const ulMiles = document.createElement("ul");
 
       // Milepæle inde i hver uge
       week.milestones.forEach(function (m) {
-        var li = document.createElement("li");
+        const li = document.createElement("li");
         li.textContent = m;
         ulMiles.appendChild(li);
       });
@@ -228,17 +248,17 @@ function renderPlan(plan) {
   riskEl.innerHTML = "";
 
   if (plan.risk_flags && plan.risk_flags.length > 0) {
-    var ul3 = document.createElement("ul");
+    const ul3 = document.createElement("ul");
 
     plan.risk_flags.forEach(function (risk) {
-      var li = document.createElement("li");
+      const li = document.createElement("li");
 
       li.innerHTML =
         "<strong>" +
         risk.type +
         "</strong>: " +
         risk.description +
-        "<br><em>Forslag:</em> " +
+        "<br><em>Suggestion:</em> " +
         risk.suggestion;
 
       ul3.appendChild(li);
@@ -248,29 +268,61 @@ function renderPlan(plan) {
   }
 }
 
+/**
+ * JSON parsing helper:
+ * - First tries direct JSON.parse
+ * - Then tries to cut out the JSON part between first { and last }
+ * - Throws an error if it still fails
+ */
+function parsePlan(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error("Could not parse JSON directly:", err, raw);
+
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+
+    if (start !== -1 && end !== -1) {
+      const cut = raw.slice(start, end + 1);
+      try {
+        return JSON.parse(cut);
+      } catch (innerErr) {
+        console.error("Could not parse JSON after slicing:", innerErr, cut);
+      }
+    }
+
+    throw new Error("Could not read JSON.");
+  }
+}
+
 // Form submit - vi sender data når man klikker på knappen
 form.addEventListener("submit", function (event) {
-  event.preventDefault(); 
+  event.preventDefault();
 
-  statusEl.textContent = "Genererer studieplan…";
+  // Reset visning og status ved nyt submit
+  statusEl.textContent = "Generating study plan…";
+  outputEmpty.classList.add("hidden");
+  planOutput.classList.remove("hidden");
 
-  var topics = [];
+  // Saml emner
+  const topics = [];
   topicsInput.value.split("\n").forEach(function (line) {
-    var trimmed = line.trim();
+    const trimmed = line.trim();
     if (trimmed !== "") {
       topics.push(trimmed);
     }
   });
 
-  var deadlines = [];
+  const deadlines = [];
   deadlinesInput.value.split("\n").forEach(function (line) {
-    var trimmed = line.trim();
+    const trimmed = line.trim();
     if (trimmed !== "") {
       deadlines.push(trimmed);
     }
   });
 
-  var data = {
+  const data = {
     topics: topics,
     deadlines: deadlines,
     weeks: Number(weeksInput.value),
@@ -278,36 +330,44 @@ form.addEventListener("submit", function (event) {
     context: contextInput.value.trim(),
   };
 
+  // Client-side validering
+  if (data.topics.length === 0) {
+    statusEl.textContent = "Enter at least one course or topic.";
+    return;
+  }
+
+  if (!data.weeks || data.weeks <= 0) {
+    statusEl.textContent = "Enter a valid number of weeks.";
+    return;
+  }
+
+  if (!data.hoursPerWeek || data.hoursPerWeek <= 0) {
+    statusEl.textContent = "Enter a valid number of hours per week.";
+    return;
+  }
+
   // Lav prompt tekst
-  var prompt = buildPrompt(data);
+  const prompt = buildPrompt(data);
 
   // Kald backend (fetch)
   callBackend(prompt)
     .then(function (raw) {
-      var plan;
+      let plan;
 
-      // Først prøv at parse direkte som JSON
       try {
-        plan = JSON.parse(raw);
+        plan = parsePlan(raw);
       } catch (err) {
-        // Hvis det fejler
-        var start = raw.indexOf("{");
-        var end = raw.lastIndexOf("}");
-
-        if (start !== -1 && end !== -1) {
-          var cut = raw.slice(start, end + 1);
-          plan = JSON.parse(cut);
-        } else {
-          statusEl.textContent = "Kunne ikke læse JSON.";
-          return;
-        }
+        console.error("parsePlan failed:", err);
+        statusEl.textContent = "Could not read JSON.";
+        return;
       }
 
-      // Hvis det lykkes, så vis planen
+      // If parse was successful, render plan
       renderPlan(plan);
-      statusEl.textContent = "Studieplan genereret";
+      statusEl.textContent = "Study plan has been generated";
     })
-    .catch(function () {
-      statusEl.textContent = "Fejl: backend svarer ikke.";
+    .catch(function (err) {
+      console.error("Error: backend not responding or network error:", err);
+      statusEl.textContent = "Error: backend is not responding.";
     });
 });

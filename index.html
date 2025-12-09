@@ -1,132 +1,168 @@
 <!DOCTYPE html>
 <html lang="da">
   <head>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Study Helper</title>
     <link rel="stylesheet" href="style.css" />
   </head>
 
   <body>
-    <main class="app">
+    <a href="#main-content" class="skip-link">Go to main content</a>
+
+    <main class="app" main id="main-content">
       <header>
         <h1>Study Helper</h1>
-        <p>Lav en personlig studieplan ud fra dine fag og deadlines.</p>
+        <p>Create a personalized study plan from your courses and deadlines.</p>
       </header>
 
       <!-- Input venstre side -->
       <section class="input-panel">
-        <h2>1. Indtast dine oplysninger</h2>
+        <h2>1. Enter your study related material</h2>
 
         <!-- Formular: vi bruger id="plan-form" fordi app.js lytter efter den -->
-        <form id="plan-form">
+        <form id="plan-form" aria-label="Form to generate your study plan">
           <!-- Kursusemner -->
           <div class="field">
-            <label for="topics">
-              Kursusemner / fag
-              <small>(et pr. linje — fx: WEB1, Forms, Layout)</small>
+            <label for="topics"
+              ><span aria-hidden="true" class="star">*</span>
+              Courses / topics
+              <small>(one per line - e.g. WEB1, Forms, Layout)</small>
             </label>
             <textarea
               id="topics"
               rows="4"
+              aria-label="Courses and/or topics, one per line"
+              aria-describedby="topics-help"
               placeholder="WEB1: JavaScript&#10;WEB1: Forms & Validation"
               required
             ></textarea>
+            <p id="topics-help" class="help">
+              Required. Enter at least one course or topic, one per line.
+            </p>
           </div>
 
           <!-- Deadlines -->
           <div class="field">
-            <label for="deadlines">
-              Deadlines & vigtige datoer
-              <small>(fx: 2025-12-10: WEB1 eksamen)</small>
+            <label for="deadlines"
+              ><span aria-hidden="true" class="star">*</span> Deadlines &
+              important dates
+              <small>(e.g. 2025-12-10: WEB1 exam)</small>
             </label>
             <textarea
               id="deadlines"
               rows="3"
+              aria-label="Deadlines and important dates"
+              aria-describedby="deadlines-help"
               placeholder="2025-12-10: WEB1 eksamen"
+              required
             ></textarea>
+            <p id="deadlines-help" class="help">
+              Required. Add at least one deadline or important date.
+            </p>
           </div>
 
           <!-- Uger og timer -->
           <div class="field-inline">
             <div class="field">
-              <label for="weeks">Studieperiode (uger)</label>
+              <label for="weeks"
+                ><span aria-hidden="true" class="star">*</span> Study period
+                (weeks)</label
+              >
               <input
                 id="weeks"
                 type="number"
                 min="1"
                 max="52"
-                value="8"
                 placeholder="8"
+                aria-describedby="weeks-help"
                 required
               />
+              <p id="weeks-help" class="help">
+                Required. Enter the number of weeks (1-52).
+              </p>
             </div>
 
             <div class="field">
-              <label for="hours">Timer pr. uge</label>
+              <label for="hours"
+                ><span aria-hidden="true" class="star">*</span> Hours pr.
+                week</label
+              >
               <input
                 id="hours"
                 type="number"
                 min="1"
                 max="80"
-                value="10"
                 placeholder="10"
+                aria-describedby="hours-help"
                 required
               />
+              <p id="hours-help" class="help">
+                Required. Enter hours per week (1-80).
+              </p>
             </div>
           </div>
 
           <!-- Ekstra info -->
           <div class="field">
             <label for="context">
-              Ekstra kontekst
-              <small>(fx svære emner, fritidsjob, læringsstil)</small>
+              Additional information
+              <small
+                >(e.g. difficult topics, part-time job, preferred learning
+                style)</small
+              >
             </label>
             <textarea
               id="context"
               rows="3"
-              placeholder="Jeg synes JavaScript og deadlines er svære"
+              aria-label="Additional information about your study situation"
+              aria-describedby="context-help"
+              placeholder="I find JavaScript difficult. I am a visual learner."
             ></textarea>
+            <p id="context-help" class="help">
+              Optional. Add any information that is important for planning.
+            </p>
           </div>
 
           <!-- Knap -->
-          <button type="submit" id="generate-btn">Generer studieplan</button>
-          <p id="status" class="status"></p>
+          <button type="submit" id="generate-btn">Generate study plan</button>
+          <p id="status" class="status" aria-live="polite"></p>
         </form>
       </section>
 
       <!-- Output højre side -->
       <section class="output-panel">
-        <h2>2. Din studieplan</h2>
+        <h2>2. Your generated study plan</h2>
 
         <!-- Tekst vises før man har genereret -->
         <div id="output-empty">
-          Indtast dine oplysninger og klik “Generer studieplan”.
+          Enter your information and click "Generate study plan".
         </div>
 
         <!-- Dette bliver synligt når app.js kalder renderPlan() -->
         <div id="plan-output" class="plan-output hidden">
           <section>
-            <h3>Oversigt</h3>
+            <h3>Overview</h3>
             <div id="overview"></div>
           </section>
 
           <section>
-            <h3>Emneprioriteter</h3>
+            <h3>Topic priorities</h3>
             <div id="priorities"></div>
           </section>
 
           <section>
-            <h3>Forudsætningskort</h3>
+            <h3>Prerequisites</h3>
             <div id="prerequisites"></div>
           </section>
 
           <section>
-            <h3>Uge-for-uge plan</h3>
+            <h3>Week-by-week plan</h3>
             <div id="weekly-schedule"></div>
           </section>
 
           <section>
-            <h3>Risiko-flag</h3>
+            <h3>Risk flags</h3>
             <div id="risk-flags"></div>
           </section>
         </div>
