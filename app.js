@@ -9,16 +9,22 @@ const BACKEND_URL = "http://localhost:3000/api/chat";
 const form = document.getElementById("plan-form");
 
 const topicsInput = document.getElementById("topics");
+const difficultTopicsInput = document.getElementById("difficult-topics");
 const deadlinesInput = document.getElementById("deadlines");
 const weeksInput = document.getElementById("weeks");
 const hoursInput = document.getElementById("hours");
-const contextInput = document.getElementById("context");
+const additionalInformationInput = document.getElementById(
+  "additionalInformation"
+);
+
+let lastDifficultTopics = [];
 
 const statusEl = document.getElementById("status");
 const outputEmpty = document.getElementById("output-empty");
 const planOutput = document.getElementById("plan-output");
 
 const overviewEl = document.getElementById("overview");
+const deadlinesOutEl = document.getElementById("deadlines-output");
 const prioritiesEl = document.getElementById("priorities");
 const prereqEl = document.getElementById("prerequisites");
 const weeklyEl = document.getElementById("weekly-schedule");
@@ -32,7 +38,7 @@ const riskEl = document.getElementById("risk-flags");
 
     const plan = JSON.parse(saved);
     renderPlan(plan);
-    statusEl.textContent = "Loaded saved study plan.";
+    statusEl.textContent = "Loaded saved AI-generated study plan.";
   } catch (err) {
     console.error("Could not restore saved study plan from localStorage:", err);
   }
@@ -50,6 +56,9 @@ function buildPrompt(data) {
     '    "topic_count": number,\n' +
     '    "summary": string\n' +
     "  },\n" +
+    '  "deadlines": [\n' +
+    '    { "date": "YYYY-MM-DD", "title": string, "week": number }\n' +
+    "  ],\n" +
     '  "topic_priorities": [\n' +
     '    { "topic": string, "priority": "high" | "medium" | "low", "reason": string }\n' +
     "  ],\n" +
@@ -69,15 +78,28 @@ function buildPrompt(data) {
     "  ]\n" +
     "}\n\n" +
     "INTERPRETATION RULES:\n" +
-    "- The field 'Hours per week' is the average number of hours the student can study.\n" +
-    "- Distribute the total hours across the weeks based on deadlines and priorities.\n" +
-    "- 'hours_planned' for each week should usually be close to this average,\n" +
-    "  but you MUST vary it across weeks (some weeks lower, some weeks higher).\n" +
-    "- The sum of all 'hours_planned' values should be consistent with 'total_hours'\n" +
-    "  and roughly match weeks * hours per week.\n\n" +
+    "- The field 'Hours per week' is the MAXIMUM number of hours the student can study in any single week.\n" +
+    "- You MUST NOT exceed this maximum in any week.\n" +
+    "- For each week: 0 <= 'hours_planned' <= Hours per week.\n" +
+    "- You MAY vary hours across weeks, but always stay within the maximum.\n" +
+    "- The sum of all 'hours_planned' MUST equal 'overview.total_hours'.\n" +
+    "- 'overview.total_hours' MUST be <= (weeks * Hours per week).\n" +
+    "- If deadlines make it difficult to stay within the maximum, keep the cap and add a clear item in 'risk_flags'.\n" +
+    "- If there is not enough capacity (weeks * Hours per week), reduce total_hours and explain why in risk_flags.\n\n" +
+    "- If 'Difficult topics (student flagged)' is not empty, you MUST allocate more study time to those topics than to other topics.\n" +
+    "- Use a simple weighting rule: difficult topics should receive about 2x attention compared to normal topics (unless a deadline forces otherwise).\n" +
+    "- Ensure difficult topics appear earlier and/or more frequently in 'focus_topics' across the weekly_schedule.\n" +
+    "- In 'topic_priorities', difficult topics should generally be 'high' or 'medium' and the reason must mention that the student finds it difficult.\n" +
+    "- You MUST include every input deadline in the 'deadlines' array.\n" +
+    "- 'week' must be between 1 and total_weeks and reflect when the deadline occurs.\n" +
+    "- You MUST include each deadline as a milestone in the relevant week using the format:\n" +
+    "  'Deadline: <title> (<date>)'.\n\n" +
     "DATA:\n" +
     "- Topics: " +
     JSON.stringify(data.topics) +
+    "\n" +
+    "- Difficult topics (student flagged): " +
+    JSON.stringify(data.difficultTopics) +
     "\n" +
     "- Deadlines: " +
     JSON.stringify(data.deadlines) +
@@ -88,8 +110,8 @@ function buildPrompt(data) {
     "- Hours per week: " +
     data.hoursPerWeek +
     "\n" +
-    "- Extra context: " +
-    JSON.stringify(data.context) +
+    "- Extra additionalInformation: " +
+    JSON.stringify(data.additionalInformation) +
     "\n\n" +
     "Return only valid JSON."
   );
@@ -149,15 +171,36 @@ function renderPlan(plan) {
   p4.textContent = plan.overview.summary;
   overviewEl.appendChild(p4);
 
+  // deadlines
+  deadlinesOutEl.innerHTML = "";
+  if (plan.deadlines && plan.deadlines.length > 0) {
+    const ulD = document.createElement("ul");
+
+    plan.deadlines.forEach(function (d) {
+      const li = document.createElement("li");
+      li.innerHTML =
+        "<strong>" +
+        d.date +
+        "</strong>: " +
+        d.title +
+        " (Week " +
+        d.week +
+        ")";
+      ulD.appendChild(li);
+    });
+
+    deadlinesOutEl.appendChild(ulD);
+  } else {
+    deadlinesOutEl.textContent = "No deadlines were returned by the model.";
+  }
+
   // prioriteter
   prioritiesEl.innerHTML = "";
-
   if (plan.topic_priorities && plan.topic_priorities.length > 0) {
     const ul = document.createElement("ul");
 
     plan.topic_priorities.forEach(function (item) {
       const li = document.createElement("li");
-
       li.innerHTML =
         "<strong>" +
         item.topic +
@@ -168,7 +211,6 @@ function renderPlan(plan) {
         item.priority +
         "</span><br>" +
         item.reason;
-
       ul.appendChild(li);
     });
 
@@ -177,89 +219,29 @@ function renderPlan(plan) {
 
   // forudsætninger
   prereqEl.innerHTML = "";
-
   if (plan.prerequisites && plan.prerequisites.length > 0) {
     const ul2 = document.createElement("ul");
 
     plan.prerequisites.forEach(function (item) {
       const li = document.createElement("li");
-
       li.innerHTML =
         "<strong>" + item.topic + "</strong> → " + item.depends_on.join(", ");
-
       ul2.appendChild(li);
     });
 
     prereqEl.appendChild(ul2);
   }
 
-  // ugentlig tabel
-  weeklyEl.innerHTML = "";
+  // week-by-week (accordion)
+  renderWeeklyScheduleAsAccordion(plan);
 
-  if (plan.weekly_schedule && plan.weekly_schedule.length > 0) {
-    const table = document.createElement("table");
-
-    // Tabel header
-    const thead = document.createElement("thead");
-    thead.innerHTML = `
-      <tr>
-        <th>Week</th>
-        <th>Focus</th>
-        <th>Hours</th>
-        <th>Milestones</th>
-      </tr>
-    `;
-    table.appendChild(thead);
-
-    const tbody = document.createElement("tbody");
-
-    // forEach pr. uge i planen
-    plan.weekly_schedule.forEach(function (week) {
-      const tr = document.createElement("tr");
-
-      // en celle pr. information
-      const td1 = document.createElement("td");
-      td1.textContent = week.week;
-      tr.appendChild(td1);
-
-      const td2 = document.createElement("td");
-      td2.textContent = week.focus_topics.join(", ");
-      tr.appendChild(td2);
-
-      const td3 = document.createElement("td");
-      td3.textContent = week.hours_planned;
-      tr.appendChild(td3);
-
-      const td4 = document.createElement("td");
-      const ulMiles = document.createElement("ul");
-
-      // Milepæle inde i hver uge
-      week.milestones.forEach(function (m) {
-        const li = document.createElement("li");
-        li.textContent = m;
-        ulMiles.appendChild(li);
-      });
-
-      td4.appendChild(ulMiles);
-      tr.appendChild(td4);
-
-      tbody.appendChild(tr);
-    });
-
-    table.appendChild(tbody);
-    weeklyEl.appendChild(table);
-  }
-
-  // Risiko
-  // Viser fx hvis der er for mange timer i en uge
+  // risiko
   riskEl.innerHTML = "";
-
   if (plan.risk_flags && plan.risk_flags.length > 0) {
     const ul3 = document.createElement("ul");
 
     plan.risk_flags.forEach(function (risk) {
       const li = document.createElement("li");
-
       li.innerHTML =
         "<strong>" +
         risk.type +
@@ -267,7 +249,6 @@ function renderPlan(plan) {
         risk.description +
         "<br><em>Suggestion:</em> " +
         risk.suggestion;
-
       ul3.appendChild(li);
     });
 
@@ -303,6 +284,286 @@ function parsePlan(raw) {
   }
 }
 
+function splitTopicsAcrossDaysWeighted(
+  focusTopics,
+  difficultTopics,
+  hoursSplit
+) {
+  const days = hoursSplit.length;
+  const dayTopics = Array.from({ length: days }, function () {
+    return [];
+  });
+
+  const topics = Array.isArray(focusTopics) ? focusTopics.slice() : [];
+  const difficult = Array.isArray(difficultTopics)
+    ? difficultTopics.slice()
+    : [];
+
+  if (topics.length === 0) return dayTopics;
+
+  // Normaliser til match (case-insensitive)
+  const difficultSet = new Set(
+    difficult.map(function (t) {
+      return String(t).trim().toLowerCase();
+    })
+  );
+
+  const difficultInWeek = topics.filter(function (t) {
+    return difficultSet.has(String(t).trim().toLowerCase());
+  });
+
+  const normalInWeek = topics.filter(function (t) {
+    return !difficultSet.has(String(t).trim().toLowerCase());
+  });
+
+  // Sortér dag-indekser så de højeste timer kommer først
+  const dayOrder = hoursSplit
+    .map(function (h, i) {
+      return { h: h, i: i };
+    })
+    .sort(function (a, b) {
+      return b.h - a.h;
+    })
+    .map(function (x) {
+      return x.i;
+    });
+
+  // Slots: én topic “tag” pr. dag (kan gentage for at give svære mere plads)
+  const slots = [];
+
+  difficultInWeek.forEach(function (t) {
+    slots.push(t);
+  });
+  normalInWeek.forEach(function (t) {
+    slots.push(t);
+  });
+
+  const targetDifficultDays =
+    difficultInWeek.length > 0 ? Math.max(3, Math.ceil(days * 0.6)) : 0;
+
+  while (slots.length < days) {
+    const difficultCount = slots.filter(function (t) {
+      return difficultSet.has(String(t).trim().toLowerCase());
+    }).length;
+
+    if (difficultInWeek.length > 0 && difficultCount < targetDifficultDays) {
+      slots.push(difficultInWeek[slots.length % difficultInWeek.length]);
+    } else {
+      slots.push(topics[slots.length % topics.length]);
+    }
+  }
+
+  // Tildel slots til dage (prioritér høj-timers dage først)
+  for (let s = 0; s < slots.length; s++) {
+    const dayIndex = dayOrder[s % dayOrder.length];
+    const topic = slots[s];
+
+    if (dayTopics[dayIndex].indexOf(topic) === -1) {
+      dayTopics[dayIndex].push(topic);
+    }
+  }
+
+  return dayTopics;
+}
+
+function enforceWeeklyHourCap(plan, maxHoursPerWeek) {
+  if (!plan || !Array.isArray(plan.weekly_schedule)) return plan;
+
+  let hadCap = false;
+  let surplus = 0;
+
+  plan.weekly_schedule.forEach(function (w) {
+    const hours = Number(w.hours_planned) || 0;
+
+    if (hours > maxHoursPerWeek) {
+      hadCap = true;
+      surplus += hours - maxHoursPerWeek;
+      w.hours_planned = maxHoursPerWeek;
+    } else if (hours < 0) {
+      w.hours_planned = 0;
+    } else {
+      w.hours_planned = hours;
+    }
+  });
+
+  // Forsøg at omfordele overskydende timer til uger med plads
+  if (surplus > 0) {
+    for (let i = 0; i < plan.weekly_schedule.length && surplus > 0; i++) {
+      const w = plan.weekly_schedule[i];
+      const room = maxHoursPerWeek - w.hours_planned;
+
+      if (room > 0) {
+        const add = Math.min(room, surplus);
+        w.hours_planned += add;
+        surplus -= add;
+      }
+    }
+  }
+
+  // Opdatér total_hours så den matcher summen (UI bliver konsistent)
+  const sum = plan.weekly_schedule.reduce(function (acc, w) {
+    return acc + (Number(w.hours_planned) || 0);
+  }, 0);
+
+  plan.overview = plan.overview || {};
+  plan.overview.total_hours = sum;
+
+  // Risk flag hvis modellen brød cap (eller der ikke var kapacitet nok)
+  plan.risk_flags = Array.isArray(plan.risk_flags) ? plan.risk_flags : [];
+
+  if (hadCap) {
+    plan.risk_flags.unshift({
+      type: "Constraint violation",
+      description:
+        "One or more weeks exceeded your maximum of " +
+        maxHoursPerWeek +
+        " hours/week. The plan was adjusted to respect the cap.",
+      suggestion:
+        "Increase weeks, reduce scope, or adjust deadlines if the workload is too tight.",
+    });
+  }
+
+  if (surplus > 0) {
+    plan.risk_flags.unshift({
+      type: "Capacity limit",
+      description:
+        "Not all hours could be redistributed without exceeding " +
+        maxHoursPerWeek +
+        " hours/week. Total hours were reduced to fit the cap.",
+      suggestion:
+        "Increase weeks or hours/week, or reduce topics to avoid overload.",
+    });
+  }
+
+  return plan;
+}
+
+function splitHoursAcrossDays(totalHours, dayCount) {
+  const base = Math.floor(totalHours / dayCount);
+  let remainder = totalHours % dayCount;
+
+  const arr = [];
+  for (let i = 0; i < dayCount; i++) {
+    const add = remainder > 0 ? 1 : 0;
+    if (remainder > 0) remainder--;
+    arr.push(base + add);
+  }
+  return arr;
+}
+
+function renderWeeklyScheduleAsAccordion(plan) {
+  const weeklyEl = document.getElementById("weekly-schedule");
+  weeklyEl.innerHTML = "";
+
+  if (
+    !plan ||
+    !Array.isArray(plan.weekly_schedule) ||
+    plan.weekly_schedule.length === 0
+  ) {
+    weeklyEl.textContent = "No weekly schedule was returned.";
+    return;
+  }
+
+  plan.weekly_schedule.forEach(function (w) {
+    const weekNum = Number(w.week) || 0;
+    const hours = Number(w.hours_planned) || 0;
+
+    const focusTopics = Array.isArray(w.focus_topics) ? w.focus_topics : [];
+    const milestones = Array.isArray(w.milestones) ? w.milestones : [];
+
+    const details = document.createElement("details");
+    details.className = "week-card";
+
+    const summary = document.createElement("summary");
+    summary.className = "week-card__summary";
+
+    const summaryText = document.createElement("span");
+    summaryText.className = "week-card__title";
+    summaryText.textContent =
+      "Week " +
+      weekNum +
+      " | " +
+      hours +
+      " hours" +
+      (focusTopics.length ? " | " + focusTopics.join(", ") : "");
+
+    summary.appendChild(summaryText);
+
+    const body = document.createElement("div");
+    body.className = "week-card__body";
+
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+    const split = splitHoursAcrossDays(hours, days.length);
+
+    const difficultTopics =
+      plan._meta && plan._meta.difficultTopics
+        ? plan._meta.difficultTopics
+        : [];
+
+    const dayTopicSplit = splitTopicsAcrossDaysWeighted(
+      focusTopics,
+      difficultTopics,
+      split
+    );
+
+    const dayLabel = document.createElement("p");
+    dayLabel.className = "week-card__label";
+    dayLabel.textContent = "Daily allocation (suggested)";
+    body.appendChild(dayLabel);
+
+    const dayList = document.createElement("ul");
+    dayList.className = "day-list";
+
+    days.forEach(function (d, i) {
+      const li = document.createElement("li");
+
+      const strong = document.createElement("strong");
+      strong.textContent = d + ": ";
+      li.appendChild(strong);
+
+      li.appendChild(document.createTextNode(split[i] + "h"));
+
+      if (dayTopicSplit[i] && dayTopicSplit[i].length > 0) {
+        const topicSpan = document.createElement("span");
+        topicSpan.className = "day-topics";
+        topicSpan.textContent = " | " + dayTopicSplit[i].join(", ");
+        li.appendChild(topicSpan);
+      }
+
+      dayList.appendChild(li);
+    });
+
+    body.appendChild(dayList);
+
+    const msLabel = document.createElement("p");
+    msLabel.className = "week-card__label";
+    msLabel.textContent = "Milestones";
+    body.appendChild(msLabel);
+
+    if (milestones.length) {
+      const msList = document.createElement("ul");
+      msList.className = "milestone-list";
+
+      milestones.forEach(function (m) {
+        const li = document.createElement("li");
+        li.textContent = m;
+        msList.appendChild(li);
+      });
+
+      body.appendChild(msList);
+    } else {
+      const empty = document.createElement("p");
+      empty.className = "week-card__muted";
+      empty.textContent = "No milestones provided.";
+      body.appendChild(empty);
+    }
+
+    details.appendChild(summary);
+    details.appendChild(body);
+    weeklyEl.appendChild(details);
+  });
+}
+
 // Form submit - vi sender data når man klikker på knappen
 form.addEventListener("submit", function (event) {
   event.preventDefault();
@@ -329,12 +590,23 @@ form.addEventListener("submit", function (event) {
     }
   });
 
+  const difficultTopics = [];
+  difficultTopicsInput.value.split("\n").forEach(function (line) {
+    const trimmed = line.trim();
+    if (trimmed !== "") {
+      difficultTopics.push(trimmed);
+    }
+  });
+
+  lastDifficultTopics = difficultTopics;
+
   const data = {
     topics: topics,
+    difficultTopics: difficultTopics,
     deadlines: deadlines,
     weeks: Number(weeksInput.value),
     hoursPerWeek: Number(hoursInput.value),
-    context: contextInput.value.trim(),
+    additionalInformation: additionalInformationInput.value.trim(),
   };
 
   // Client-side validering
@@ -368,6 +640,9 @@ form.addEventListener("submit", function (event) {
         statusEl.textContent = "Could not read JSON.";
         return;
       }
+
+      plan = enforceWeeklyHourCap(plan, data.hoursPerWeek);
+      plan._meta = { difficultTopics: lastDifficultTopics };
 
       // If parse was successful, render plan
       renderPlan(plan);
